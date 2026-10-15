@@ -1,0 +1,223 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Dolores Drive · 3D walk</title></head><body>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: full-bleed model canvas; project switch + viewpoints float top, move pad bottom-left, look anywhere */
+:root{
+  --bg:#e4e9e6; --fg:#1d2321; --muted:#5f6a66; --panel:rgba(250,251,249,.86); --line:rgba(29,35,33,.14);
+  --accent:#e2731f; --accent-fg:#fff; --sky:#dfe7ea;
+  --display:"Archivo","Helvetica Neue",Arial,sans-serif; --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#141816;--fg:#eef1ef;--muted:#9aa5a0;--panel:rgba(24,29,27,.84);--line:rgba(238,241,239,.14);--sky:#2a3236;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#141816;--fg:#eef1ef;--muted:#9aa5a0;--panel:rgba(24,29,27,.84);--line:rgba(238,241,239,.14);--sky:#2a3236;color-scheme:dark}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--display);overflow:hidden;-webkit-user-select:none;user-select:none}
+#stage{position:fixed;inset:0;touch-action:none}
+#stage canvas{display:block;width:100%;height:100%}
+.top{position:fixed;top:calc(env(safe-area-inset-top,0px) + 12px);left:max(16px,env(safe-area-inset-left,0px));right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start;pointer-events:none;z-index:5}
+.card{pointer-events:auto;background:var(--panel);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.brand{display:flex;flex-direction:column;gap:2px;min-width:0}
+.brand b{font-size:15px;letter-spacing:.01em}
+.brand b span{color:var(--accent)}
+.brand small{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.seg{display:flex;gap:4px}
+button{font:inherit;font-size:14px;font-weight:500;color:var(--fg);background:transparent;border:1px solid var(--line);border-radius:9px;padding:9px 13px;cursor:pointer;min-height:40px}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+button.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-weight:700}
+button:disabled{opacity:.45;cursor:default}
+.views{display:flex;flex-wrap:wrap;gap:6px}
+.spacer{flex:1}
+#status{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;z-index:4;max-width:min(420px,calc(100% - 32px))}
+#status .card{display:flex;flex-direction:column;gap:6px;padding:16px 18px}
+#status h2{margin:0;font-size:18px;text-wrap:balance}
+#status p{margin:0;color:var(--muted);font-size:13px;line-height:1.45}
+.bar{height:4px;background:var(--line);border-radius:2px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+#pad{position:fixed;left:max(20px,env(safe-area-inset-left,0px));bottom:calc(env(safe-area-inset-bottom,0px) + 20px);width:132px;height:132px;border-radius:50%;background:var(--panel);border:1px solid var(--line);z-index:5;touch-action:none}
+#pad i{position:absolute;left:50%;top:50%;width:52px;height:52px;margin:-26px 0 0 -26px;border-radius:50%;background:var(--fg);opacity:.85}
+.hint{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(env(safe-area-inset-bottom,0px) + 20px);font-family:var(--mono);font-size:11px;color:var(--muted);text-align:right;line-height:1.5;z-index:5;pointer-events:none}
+.hint .card{pointer-events:none}
+@media (max-width:560px){.hint{display:none}.brand small{display:none}}
+</style>
+
+<div id="stage"></div>
+
+<div class="top">
+  <div class="card brand"><b>yds arch<span>.</span> VR walk</b><small id="meta">Revit model, 1:1 scale</small></div>
+  <div class="card seg" role="group" aria-label="Project">
+    <button id="p-dolores" aria-pressed="true">Dolores</button>
+    <button id="p-mariposa" aria-pressed="false" hidden>Mariposa</button><button id="home" onclick="location.href='index.html'">All projects</button>
+  </div>
+  <div class="card views" id="views" role="group" aria-label="Viewpoints"></div>
+  <div class="spacer"></div>
+  <div class="card seg"><button id="vr" class="primary" hidden>Enter VR</button><button id="mode" aria-pressed="false">Overview</button></div>
+</div>
+
+<div id="status"><div class="card"><h2 id="st-h">Loading Dolores</h2><p id="st-p">About 6 MB. Keep the headset on Wi-Fi.</p><div class="bar"><i id="st-bar"></i></div></div></div>
+
+<div id="pad" aria-label="Walk pad"><i></i></div>
+<div class="hint"><div class="card">Drag anywhere to look · pad to walk<br>Keys: W A S D · Q/E turn<br>Headset: left stick walk · right stick turn</div></div>
+
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+
+const PROJECTS={
+  dolores:{name:'Dolores',file:'dolores.glb',size:'About 6 MB',source:'Revit model',
+    views:[{n:'Street',p:[9.8,31],y:14},{n:'Front house',p:[8.4,14.3],y:194,in:1},{n:'Driveway',p:[6.9,2],y:30},{n:'Middle house',p:[0,-1],y:194,in:1},{n:'Rear ADU',p:[-5,-8],y:20}]},
+  mariposa:{name:'Mariposa',file:'mariposa.txt',size:'',source:'Revit export pending',views:[]}
+};
+const EYE=1.6, SPEED=1.4;
+const $=id=>document.getElementById(id);
+const stage=$('stage');
+
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.xr.enabled=true;
+stage.appendChild(renderer.domElement);
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(css('--sky')||'#dfe7ea');
+scene.add(new THREE.HemisphereLight(0xffffff,0x8a7d6a,1.5));
+const sun=new THREE.DirectionalLight(0xfff4e6,2.1);sun.position.set(25,40,18);scene.add(sun);
+
+// rig: yaw on rig, pitch on camera (non-VR)
+const rig=new THREE.Group();scene.add(rig);
+const cam=new THREE.PerspectiveCamera(70,1,0.05,600);rig.add(cam);cam.position.y=EYE;
+let yaw=0,pitch=0;
+const orbitCam=new THREE.PerspectiveCamera(45,1,0.1,2000);
+const orbit=new OrbitControls(orbitCam,renderer.domElement);orbit.enabled=false;orbit.enableDamping=true;
+let overview=false;
+
+function size(){const w=innerWidth,h=innerHeight;renderer.setSize(w,h);cam.aspect=orbitCam.aspect=w/h;cam.updateProjectionMatrix();orbitCam.updateProjectionMatrix();}
+addEventListener('resize',size);size();
+matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',()=>scene.background.set(css('--sky')));
+
+// ---------- model loading ----------
+const loader=new GLTFLoader();
+let model=null, colliders=[], current=null;
+const ray=new THREE.Raycaster();ray.far=60;
+function groundAt(x,z,fromY){
+  if(!colliders.length) return 0;
+  ray.set(new THREE.Vector3(x,fromY,z),new THREE.Vector3(0,-1,0));
+  const h=ray.intersectObjects(colliders,false)[0];
+  return h?h.point.y:null;
+}
+// where to stand: outdoors the highest open-sky walkable surface; indoors the lowest floor that has a ceiling
+function standAt(x,z,inside){
+  if(!colliders.length) return 0;
+  ray.set(new THREE.Vector3(x,80,z),new THREE.Vector3(0,-1,0));ray.far=200;
+  const hits=ray.intersectObjects(colliders,false);ray.far=60;
+  const nm=new THREE.Matrix3(),n=new THREE.Vector3(),ys=hits.map(h=>h.point.y),c=[];
+  const topo=Math.max(-99,...hits.filter(h=>/^Site/.test(h.object.material?.name||'')).map(h=>h.point.y));
+  for(const h of hits){if(!h.face)continue;nm.getNormalMatrix(h.object.matrixWorld);n.copy(h.face.normal).applyMatrix3(nm).normalize();
+    if(n.y<0.5||/^RP-/.test(h.object.material?.name||''))continue;if(inside&&h.point.y<topo+0.05)continue;const above=ys.filter(y=>y>h.point.y+0.05);const clear=above.length?Math.min(...above)-h.point.y:Infinity;
+    if(clear>=2.0)c.push({y:h.point.y,clear});}
+  if(!c.length) return hits.length?hits[hits.length-1].point.y:0;
+  if(inside){const f=c.filter(k=>k.clear<8).sort((p,q)=>p.y-q.y);if(f.length)return f[0].y;}
+  const o=c.filter(k=>k.clear===Infinity).sort((p,q)=>q.y-p.y);
+  return (o[0]||c[0]).y;
+}
+function status(h,p,pct){const s=$('status');if(h===null){s.hidden=true;return;}s.hidden=false;$('st-h').textContent=h;$('st-p').textContent=p;$('st-bar').style.width=(pct??0)+'%';$('st-bar').parentElement.hidden=pct==null;}
+
+function load(key){
+  const P=PROJECTS[key];current=key;
+  ['dolores','mariposa'].forEach(k=>$('p-'+k).setAttribute('aria-pressed',k===key));
+  $('meta').textContent=P.source+' · 1:1 scale';
+  if(model){scene.remove(model);model.traverse(o=>{o.geometry?.dispose();});model=null;colliders=[];}
+  buildViews(P);
+  status('Loading '+P.name,P.size?P.size+'. Keep the headset on Wi-Fi.':'',0);
+  const fail=()=>status(P.name+' is not ready yet', key==='mariposa'?'The Mariposa model is still being exported from Revit. It will appear here once it is uploaded.':'The model file could not be loaded. Check the connection and reopen the page.',null);
+  loader.load(P.file,g=>{
+      model=g.scene;
+      model.traverse(o=>{if(o.isMesh){colliders.push(o);const m=o.material;if(m&&m.transparent){m.depthWrite=false;}}});
+      scene.add(model);
+      const box=new THREE.Box3().setFromObject(model);
+      orbit.target.copy(box.getCenter(new THREE.Vector3()));
+      const rr=box.getSize(new THREE.Vector3()).length();
+      orbitCam.position.set(orbit.target.x+rr*.55,orbit.target.y+rr*.45,orbit.target.z+rr*.55);orbit.update();
+      status(null);
+      if(P.views[0]) goView(P.views[0]);
+    },e=>{if(e.total)$('st-bar').style.width=(100*e.loaded/e.total).toFixed(0)+'%';},fail);
+}
+function buildViews(P){
+  const v=$('views');v.replaceChildren();v.hidden=!P.views.length;
+  P.views.forEach((vw,i)=>{const b=document.createElement('button');b.textContent=vw.n;b.onclick=()=>goView(vw);v.appendChild(b);});
+}
+function goView(vw){
+  setOverview(false);
+  rig.position.set(vw.p[0],standAt(vw.p[0],vw.p[1],vw.in),vw.p[1]);
+  yaw=THREE.MathUtils.degToRad(vw.y);pitch=0;applyLook();
+}
+function applyLook(){rig.rotation.y=yaw;if(!renderer.xr.isPresenting) cam.rotation.set(pitch,0,0);}
+$('p-dolores').onclick=()=>load('dolores');
+$('p-mariposa').onclick=()=>load('mariposa');
+
+function setOverview(on){overview=on;orbit.enabled=on;$('mode').setAttribute('aria-pressed',on);$('mode').textContent=on?'Walk':'Overview';$('pad').hidden=on;}
+$('mode').onclick=()=>setOverview(!overview);
+
+// ---------- look (drag) ----------
+let drag=null;
+renderer.domElement.addEventListener('pointerdown',e=>{if(overview)return;drag={x:e.clientX,y:e.clientY,id:e.pointerId};renderer.domElement.setPointerCapture(e.pointerId);});
+renderer.domElement.addEventListener('pointermove',e=>{if(!drag||e.pointerId!==drag.id)return;const k=0.0042;yaw+= (e.clientX-drag.x)*k;pitch+=(e.clientY-drag.y)*k;pitch=Math.max(-1.3,Math.min(1.3,pitch));drag.x=e.clientX;drag.y=e.clientY;applyLook();});
+const endDrag=e=>{if(drag&&e.pointerId===drag.id)drag=null;};
+renderer.domElement.addEventListener('pointerup',endDrag);renderer.domElement.addEventListener('pointercancel',endDrag);
+
+// ---------- walk pad + keys ----------
+const pad=$('pad'),knob=pad.firstElementChild;let padV={x:0,y:0},padId=null;
+function padMove(e){const r=pad.getBoundingClientRect();let dx=e.clientX-(r.left+r.width/2),dy=e.clientY-(r.top+r.height/2);const R=r.width/2-20,l=Math.hypot(dx,dy);if(l>R){dx*=R/l;dy*=R/l;}knob.style.transform=`translate(${dx}px,${dy}px)`;padV={x:dx/R,y:dy/R};}
+pad.addEventListener('pointerdown',e=>{padId=e.pointerId;pad.setPointerCapture(e.pointerId);padMove(e);e.stopPropagation();});
+pad.addEventListener('pointermove',e=>{if(e.pointerId===padId)padMove(e);});
+const padEnd=e=>{if(e.pointerId!==padId)return;padId=null;padV={x:0,y:0};knob.style.transform='';};
+pad.addEventListener('pointerup',padEnd);pad.addEventListener('pointercancel',padEnd);
+const keys=new Set();
+addEventListener('keydown',e=>{if(e.target.tagName!=='BUTTON')keys.add(e.key.toLowerCase());});
+addEventListener('keyup',e=>keys.delete(e.key.toLowerCase()));
+
+// ---------- VR ----------
+let vrSession=null, snapReady=true;
+if(navigator.xr?.isSessionSupported){
+  navigator.xr.isSessionSupported('immersive-vr').then(ok=>{$('vr').hidden=!ok;}).catch(()=>{});
+}
+$('vr').onclick=async()=>{
+  if(vrSession){vrSession.end();return;}
+  try{
+    vrSession=await navigator.xr.requestSession('immersive-vr',{optionalFeatures:['local-floor']});
+    renderer.xr.setReferenceSpaceType('local-floor');
+    await renderer.xr.setSession(vrSession);
+    setOverview(false);cam.rotation.set(0,0,0);cam.position.set(0,0,0);
+    $('vr').textContent='Exit VR';
+    vrSession.addEventListener('end',()=>{vrSession=null;$('vr').textContent='Enter VR';cam.position.set(0,EYE,0);applyLook();});
+  }catch(err){status('VR could not start','This page is running inside a frame that does not allow VR. Use the walk pad, or open the standalone link in the headset browser.',null);setTimeout(()=>status(null),5000);}
+};
+
+// ---------- loop ----------
+const clock=new THREE.Clock(),fwd=new THREE.Vector3(),side=new THREE.Vector3();let gTick=0;
+renderer.setAnimationLoop(()=>{
+  const dt=Math.min(clock.getDelta(),0.05);
+  if(overview){orbit.update();renderer.render(scene,orbitCam);return;}
+  let mx=padV.x,mz=padV.y,turn=0;
+  if(keys.has('w')||keys.has('arrowup'))mz-=1; if(keys.has('s')||keys.has('arrowdown'))mz+=1;
+  if(keys.has('a'))mx-=1; if(keys.has('d'))mx+=1; if(keys.has('q')||keys.has('arrowleft'))turn+=1; if(keys.has('e')||keys.has('arrowright'))turn-=1;
+  if(vrSession){
+    for(const src of vrSession.inputSources){const a=src.gamepad?.axes;if(!a)continue;const x=a[2]??a[0],y=a[3]??a[1];
+      if(src.handedness==='left'){mx+=x;mz+=y;}
+      if(src.handedness==='right'){if(Math.abs(x)>.7&&snapReady){yaw+=x>0?-Math.PI/6:Math.PI/6;rig.rotation.y=yaw;snapReady=false;}if(Math.abs(x)<.3)snapReady=true;}}
+  }
+  if(turn){yaw+=turn*1.6*dt;applyLook();}
+  if(Math.abs(mx)>.08||Math.abs(mz)>.08){
+    const xrCam=vrSession?renderer.xr.getCamera():cam;
+    xrCam.getWorldDirection(fwd);fwd.y=0;fwd.normalize();side.crossVectors(fwd,new THREE.Vector3(0,1,0));
+    const nx=rig.position.x+(fwd.x*-mz+side.x*mx)*SPEED*dt, nz=rig.position.z+(fwd.z*-mz+side.z*mx)*SPEED*dt;
+    const g=groundAt(nx,nz,rig.position.y+1.2);
+    if(g!==null&&g-rig.position.y<0.45){rig.position.x=nx;rig.position.z=nz;rig.position.y+=(g-rig.position.y)*0.5;}
+  } else if(++gTick%20===0){const g=groundAt(rig.position.x,rig.position.z,rig.position.y+1.2);if(g!==null&&Math.abs(g-rig.position.y)<0.45)rig.position.y=g;}
+  renderer.render(scene,cam);
+});
+load('dolores');
+</script>
+</body></html>
