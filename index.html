@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>yds arch. · VR walkthroughs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Instrument+Serif&display=swap">
+<style>
+:root{--ground:#11150f;--panel:#1a2017;--line:rgba(239,231,218,.16);--ink:#efe7da;--muted:rgba(239,231,218,.66);--accent:#e2731f;--teal:#5fb3a9;--display:"Instrument Serif",Georgia,serif;--body:"Instrument Sans",system-ui,sans-serif;color-scheme:dark}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--body);padding:max(28px,env(safe-area-inset-top)) max(20px,env(safe-area-inset-right)) 40px max(20px,env(safe-area-inset-left))}
+main{max-width:1080px;margin:0 auto;display:grid;gap:28px}
+header .eyebrow{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+header h1{font:400 clamp(34px,6vw,56px)/1 var(--display);margin:6px 0 10px;text-wrap:balance}
+header p{margin:0;color:var(--muted);max-width:60ch;line-height:1.5}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px}
+.proj{background:var(--panel);border:1px solid var(--line);border-radius:18px;overflow:hidden;display:flex;flex-direction:column}
+.proj img{width:100%;aspect-ratio:25/16;object-fit:cover;display:block}
+.proj .body{padding:18px 20px 20px;display:grid;gap:12px}
+.proj h2{font:400 30px/1 var(--display);margin:0}
+.proj .meta{color:var(--teal);font-size:14px}
+.actions{display:flex;flex-wrap:wrap;gap:10px}
+a.btn{display:inline-flex;align-items:center;min-height:48px;padding:0 18px;border-radius:12px;font-weight:600;text-decoration:none;color:#fff;background:var(--accent);font-size:16px}
+a.btn.alt{background:transparent;color:var(--ink);border:1px solid var(--line);font-weight:500}
+a.btn:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+.how{border-top:1px solid var(--line);padding-top:18px;color:var(--muted);font-size:14px;line-height:1.6;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px 28px}
+.how b{color:var(--ink)}
+</style></head><body><main>
+<header><div class="eyebrow">yds arch. · Altadena rebuilds</div><h1>Step inside the projects</h1>
+<p>Put on the headset, pick a project and press <b>Enter VR</b>. Each walkthrough is built from the Revit model and rendered at the real site.</p></header>
+<section class="grid">
+ <article class="proj"><img src="pano/dolores/cover.jpg" alt="Front yard view of the Dolores Drive homes"><div class="body"><h2>Dolores Drive</h2><div class="meta">Altadena · two homes and a detached ADU · 9 spots</div>
+  <div class="actions"><a class="btn" href="tour.html?p=dolores">Walk through in VR</a><a class="btn alt" href="model.html">Walk the 3D model</a></div></div></article>
+ <article class="proj"><img src="pano/mariposa/cover.jpg" alt="Motor court view of the Mariposa Street units"><div class="body"><h2>Mariposa Street</h2><div class="meta">Altadena · three units around a motor court · 14 spots</div>
+  <div class="actions"><a class="btn" href="tour.html?p=mariposa">Walk through in VR</a></div></div></article>
+</section>
+<section class="how">
+ <div><b>In the headset.</b> Point at an orange ring on the floor and pull the trigger to walk there. Push the thumbstick forward to walk the way you are facing; left or right to turn.</div>
+ <div><b>Guided walk.</b> Press it and the tour moves from spot to spot by itself. Good for a visitor who has never used VR.</div>
+ <div><b>On a tablet.</b> Drag to look around, tap a ring to walk, tap the site plan to jump anywhere.</div>
+</section>
+</main></body></html>
