@@ -42,7 +42,7 @@ button:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
   <button id="next">Next spot</button>
   <button id="vr" class="primary" hidden>Enter VR</button>
 </div>
-<div class="hint glass">Drag to look · tap a floor ring to walk there</div>
+<div class="hint glass">Drag to look · tap a floor ring to walk there · in VR, press B to leave</div>
 <div id="msg" class="glass" hidden></div>
 
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"}}</script>
@@ -75,7 +75,7 @@ const geo=new THREE.SphereGeometry(30,96,48);geo.scale(-1,1,1);
 function makeSphere(){const m=new THREE.MeshBasicMaterial({transparent:true,opacity:0,depthWrite:false});const s=new THREE.Mesh(geo,m);s.renderOrder=0;scene.add(s);return s;}
 const sphA=makeSphere(),sphB=makeSphere();let front=sphA,backS=sphB;
 const loader=new THREE.TextureLoader();const cache={};
-function tex(id){if(!cache[id])cache[id]=new Promise((res,rej)=>loader.load(`pano/${key}/${id}.jpg`,t=>{t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=renderer.capabilities.getMaxAnisotropy();res(t)},undefined,rej));return cache[id];}
+function tex(id){if(!cache[id])cache[id]=new Promise((res,rej)=>{const to=setTimeout(()=>{delete cache[id];rej(new Error('timeout'))},20000);loader.load(`pano/${key}/${id}.jpg`,t=>{clearTimeout(to);t.colorSpace=THREE.SRGBColorSpace;t.generateMipmaps=false;t.minFilter=THREE.LinearFilter;res(t)},undefined,e=>{clearTimeout(to);delete cache[id];rej(e)});});return cache[id];}
 
 // floor rings to linked spots
 const markers=new THREE.Group();scene.add(markers);
@@ -95,7 +95,12 @@ function buildMarkers(s){
 }
 
 // ---------- spot state + walking transition ----------
-let current=null,busy=false;
+let current=null,busy=false,trans=null;
+function runTrans(now){if(!trans)return;const k=Math.min(1,(now-trans.t0)/trans.T),e=k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2;
+  // walking feel: the old view slides past you while the new one comes up around you
+  front.position.copy(trans.walkDir).multiplyScalar(-e*6);backS.position.copy(trans.walkDir).multiplyScalar((1-e)*6);
+  front.material.opacity=1-e;backS.material.opacity=e;
+  if(k>=1){const d=trans.done;trans=null;d();}}
 const routeIdx=()=>P.route.indexOf(current?.id);
 async function go(id,{instant=false}={}){
   if(busy||(current&&current.id===id))return;busy=true;
@@ -105,18 +110,13 @@ async function go(id,{instant=false}={}){
   backS.material.map=t;backS.material.needsUpdate=true;backS.rotation.y=-Math.PI/2+rad(s.heading||0);
   const walkDir=prev?dir(bearing(prev,s)):new THREE.Vector3();
   markers.visible=false;
-  const T=instant?1:900;const t0=performance.now();
-  await new Promise(done=>{function step(now){const k=Math.min(1,(now-t0)/T),e=k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2;
-      // walking feel: the old view slides past you while the new one comes up around you
-      front.position.copy(walkDir).multiplyScalar(-e*6);backS.position.copy(walkDir).multiplyScalar((1-e)*6);
-      front.material.opacity=1-e;backS.material.opacity=e;
-      if(k<1)requestAnimationFrame(step);else done();}
-    requestAnimationFrame(step);});
+  // driven by the render loop: the headset pauses page timers while in VR, so nothing here may rely on them
+  await new Promise(done=>{trans={t0:performance.now(),T:instant?1:900,walkDir,done};});
   front.material.opacity=0;front.position.set(0,0,0);backS.position.set(0,0,0);
   [front,backS]=[backS,front];
-  current=s;buildMarkers(s);markers.visible=true;$('spot').textContent=s.name;drawMap();busy=false;
+  current=s;if(vrOk)$('vr').hidden=false;buildMarkers(s);markers.visible=true;$('spot').textContent=s.name;drawMap();busy=false;
   // preload neighbours
-  s.links.forEach(l=>tex(l).catch(()=>{}));const n=P.route[routeIdx()+1];if(n)tex(n).catch(()=>{});
+  const n=P.route[routeIdx()+1];if(n)tex(n).catch(()=>{});s.links.slice(0,2).forEach(l=>tex(l).catch(()=>{}));
 }
 function step(d){const i=routeIdx();const n=P.route[(i+d+P.route.length)%P.route.length];go(n);}
 $('next').onclick=()=>{stopAuto();step(1)};$('prev').onclick=()=>{stopAuto();step(-1)};
@@ -141,7 +141,7 @@ function pick2D(e){ndc.set(e.clientX/innerWidth*2-1,-(e.clientY/innerHeight)*2+1
 
 // ---------- VR ----------
 let session=null;
-if(navigator.xr?.isSessionSupported)navigator.xr.isSessionSupported('immersive-vr').then(ok=>{$('vr').hidden=!ok;}).catch(()=>{});
+let vrOk=false;if(navigator.xr?.isSessionSupported)navigator.xr.isSessionSupported('immersive-vr').then(ok=>{vrOk=ok;if(current)$('vr').hidden=!ok;}).catch(()=>{});
 $('vr').onclick=async()=>{
   if(session){session.end();return;}
   try{session=await navigator.xr.requestSession('immersive-vr',{optionalFeatures:['local-floor']});
@@ -165,7 +165,7 @@ function aimAt(c){tmpM.identity().extractRotation(c.matrixWorld);ray.ray.origin.
 let stickReady=true;
 function sticks(){
   if(!session)return;
-  for(const src of session.inputSources){const a=src.gamepad?.axes;if(!a)continue;const x=a[2]??0,y=a[3]??0;
+  for(const src of session.inputSources){const bt=src.gamepad?.buttons;if(bt&&bt[5]&&bt[5].pressed){session.end();return;}const a=src.gamepad?.axes;if(!a)continue;const x=a[2]??0,y=a[3]??0;
     if(Math.abs(x)<.3&&Math.abs(y)<.3){stickReady=true;continue;}
     if(!stickReady)continue;stickReady=false;
     if(Math.abs(x)>.7){yaw+=x>0?rad(30):-rad(30);rig.rotation.y=-yaw;}
@@ -189,7 +189,7 @@ function showMsg(t,ms){const m=$('msg');m.textContent=t;m.hidden=false;setTimeou
 // ---------- loop ----------
 const clock=new THREE.Clock();let mapTick=0;
 renderer.setAnimationLoop(()=>{
-  const dt=clock.getDelta();sticks();
+  const dt=clock.getDelta();runTrans(performance.now());sticks();
   sphA.position.y=sphB.position.y=0;
   // spheres and rings stay centred on the viewer
   const p=rig.position;markers.position.copy(p);
