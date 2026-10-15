@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>yds arch. VR</title>
+<script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+<script src="projects.js"></script>
+<style>
+#hud{position:fixed;z-index:10;left:12px;top:12px;background:rgba(17,21,15,.75);color:#efe7da;font:500 15px system-ui,sans-serif;padding:10px 14px;border-radius:12px;max-width:70vw}
+#hud a{color:#e2731f}
+</style>
+</head>
+<body>
+<div id="hud"><b id="pname"></b> · <span id="sname"></span><br><small>Press the VR goggles button (bottom right). Point at an orange circle and pull the trigger to walk. <a href="index.html">All projects</a></small></div>
+<a-scene renderer="antialias:true;colorManagement:true" vr-mode-ui="enabled:true" loading-screen="dotsColor:#e2731f;backgroundColor:#11150f">
+  <a-assets timeout="20000" id="assets"></a-assets>
+  <a-sky id="sky" radius="40" rotation="0 -90 0"></a-sky>
+  <a-entity id="spots"></a-entity>
+  <a-entity id="rig">
+    <a-entity camera look-controls wasd-controls="enabled:false" position="0 1.6 0">
+      <a-entity cursor="rayOrigin:mouse" raycaster="objects:.hot"></a-entity>
+    </a-entity>
+    <a-entity laser-controls="hand:right" raycaster="objects:.hot;far:60" line="color:#e2731f;opacity:.8"></a-entity>
+    <a-entity laser-controls="hand:left" raycaster="objects:.hot;far:60" line="color:#e2731f;opacity:.8"></a-entity>
+  </a-entity>
+</a-scene>
+<script>
+const key=(new URLSearchParams(location.search).get('p')||'dolores').toLowerCase();
+const P=window.PROJECTS[key]||window.PROJECTS.dolores;
+const byId=Object.fromEntries(P.spots.map(s=>[s.id,s]));
+document.getElementById('pname').textContent=P.name;
+const bearing=(a,b)=>Math.atan2(b.x-a.x,-(b.y-a.y));
+const sky=document.getElementById('sky'),spots=document.getElementById('spots');
+let current=null;
+function go(id){
+  const s=byId[id];if(!s)return;current=s;
+  document.getElementById('sname').textContent=s.name;
+  sky.setAttribute('src','pano/'+key+'/'+id+'.jpg');
+  sky.setAttribute('rotation','0 '+(-90+(s.heading||0))+' 0');
+  while(spots.firstChild)spots.removeChild(spots.firstChild);
+  s.links.forEach(t=>{const tt=byId[t];if(!tt)return;const b=bearing(s,tt);
+    const x=Math.sin(b)*3.2,z=-Math.cos(b)*3.2;
+    const g=document.createElement('a-entity');g.setAttribute('position',x+' 0.05 '+z);
+    const disc=document.createElement('a-circle');disc.setAttribute('class','hot');disc.setAttribute('radius','0.45');disc.setAttribute('rotation','-90 0 0');
+    disc.setAttribute('material','color:#e2731f;opacity:0.75;transparent:true;shader:flat');
+    disc.addEventListener('mouseenter',()=>disc.setAttribute('material','opacity',1));
+    disc.addEventListener('mouseleave',()=>disc.setAttribute('material','opacity',0.75));
+    disc.addEventListener('click',()=>go(t));
+    const lab=document.createElement('a-text');lab.setAttribute('value',tt.name);lab.setAttribute('align','center');lab.setAttribute('width','4');lab.setAttribute('color','#ffffff');
+    lab.setAttribute('position','0 0.7 0');lab.setAttribute('look-at','[camera]');
+    g.appendChild(disc);g.appendChild(lab);spots.appendChild(g);});
+}
+// keep labels facing the viewer without extra libraries
+AFRAME.registerComponent('look-at',{tick(){const c=this.el.sceneEl.camera;if(!c)return;const p=new THREE.Vector3();c.getWorldPosition(p);this.el.object3D.lookAt(p);}});
+document.querySelector('a-scene').addEventListener('loaded',()=>go(P.start));
+</script>
+</body>
+</html>
