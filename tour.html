@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>yds arch. VR walk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Instrument+Serif&display=swap">
+<style>
+:root{--ground:#11150f;--glass:rgba(17,21,15,.55);--glass2:rgba(17,21,15,.8);--line:rgba(239,231,218,.2);--ink:#efe7da;--muted:rgba(239,231,218,.68);--accent:#e2731f;--teal:#5fb3a9;
+--display:"Instrument Serif",Georgia,serif;--body:"Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;color-scheme:dark}
+html,body{height:100%;margin:0}
+body{background:var(--ground);color:var(--ink);font-family:var(--body);overflow:hidden;-webkit-user-select:none;user-select:none}
+#stage{position:fixed;inset:0;touch-action:none}
+canvas{display:block}
+.glass{background:var(--glass);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid var(--line);border-radius:14px}
+.card{position:fixed;z-index:5;top:calc(14px + env(safe-area-inset-top,0px));left:max(14px,env(safe-area-inset-left,0px));padding:12px 16px;max-width:min(360px,calc(100vw - 28px))}
+.card .eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.card h1{margin:2px 0 0;font:400 26px/1.05 var(--display)}
+.card .where{margin-top:6px;font-size:13px;color:var(--teal)}
+.card .where b{color:var(--ink);font-weight:600}
+.bar{position:fixed;z-index:5;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom,0px));display:flex;gap:6px;padding:6px;align-items:center;max-width:calc(100vw - 28px);flex-wrap:wrap;justify-content:center}
+button{font:500 14px var(--body);color:var(--ink);background:transparent;border:1px solid var(--line);border-radius:10px;padding:10px 14px;cursor:pointer;min-height:42px}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button[aria-pressed="true"]{background:var(--ink);color:var(--ground)}
+button:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+#map{position:fixed;z-index:5;top:calc(14px + env(safe-area-inset-top,0px));right:max(14px,env(safe-area-inset-right,0px));width:180px;padding:6px}
+#map canvas{width:100%;height:auto;border-radius:9px}
+#msg{position:fixed;z-index:6;left:50%;top:50%;transform:translate(-50%,-50%);padding:14px 18px;text-align:center;max-width:min(420px,calc(100vw - 32px))}
+.hint{position:fixed;z-index:5;left:max(14px,env(safe-area-inset-left,0px));bottom:calc(84px + env(safe-area-inset-bottom,0px));padding:7px 10px;font-size:12px;color:var(--muted)}
+@media (max-width:640px){#map{width:120px}.hint{display:none}.card h1{font-size:21px}}
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<div class="card glass"><div class="eyebrow">yds arch. · VR walkthrough</div><h1 id="title"></h1><div class="where"><span id="city"></span> · <b id="spot"></b></div></div>
+<div id="map" class="glass"><canvas id="mapc"></canvas></div>
+<div class="bar glass">
+  <button id="back">All projects</button>
+  <button id="prev">Back a step</button>
+  <button id="auto" aria-pressed="false">Guided walk</button>
+  <button id="next">Next spot</button>
+  <button id="vr" class="primary" hidden>Enter VR</button>
+</div>
+<div class="hint glass">Drag to look · tap a floor ring to walk there</div>
+<div id="msg" class="glass" hidden></div>
+
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"}}</script>
+<script src="projects.js"></script>
+<script type="module">
+import * as THREE from 'three';
+import {XRControllerModelFactory} from 'three/addons/webxr/XRControllerModelFactory.js';
+
+const key=(new URLSearchParams(location.search).get('p')||'dolores').toLowerCase();
+const P=window.PROJECTS[key]||window.PROJECTS.dolores;
+const byId=Object.fromEntries(P.spots.map(s=>[s.id,s]));
+const $=id=>document.getElementById(id);
+$('title').textContent=P.name;$('city').textContent=P.city;document.title='yds arch. · '+P.name+' VR';
+const rad=d=>d*Math.PI/180;
+const bearing=(a,b)=>Math.atan2(b.x-a.x,-(b.y-a.y)); // plan up = 0, clockwise
+const dir=(b,r=1)=>new THREE.Vector3(Math.sin(b)*r,0,-Math.cos(b)*r);
+
+// ---------- renderer ----------
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.xr.enabled=true;renderer.outputColorSpace=THREE.SRGBColorSpace;
+$('stage').appendChild(renderer.domElement);
+const scene=new THREE.Scene();
+const rig=new THREE.Group();scene.add(rig);
+const cam=new THREE.PerspectiveCamera(75,1,0.05,200);cam.position.y=1.6;rig.add(cam);
+function size(){renderer.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();}
+addEventListener('resize',size);size();
+
+// two spheres for cross-fades; each follows the rig so you always stand at its centre
+const geo=new THREE.SphereGeometry(30,96,48);geo.scale(-1,1,1);
+function makeSphere(){const m=new THREE.MeshBasicMaterial({transparent:true,opacity:0,depthWrite:false});const s=new THREE.Mesh(geo,m);s.renderOrder=0;scene.add(s);return s;}
+const sphA=makeSphere(),sphB=makeSphere();let front=sphA,backS=sphB;
+const loader=new THREE.TextureLoader();const cache={};
+function tex(id){if(!cache[id])cache[id]=new Promise((res,rej)=>loader.load(`pano/${key}/${id}.jpg`,t=>{t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=renderer.capabilities.getMaxAnisotropy();res(t)},undefined,rej));return cache[id];}
+
+// floor rings to linked spots
+const markers=new THREE.Group();scene.add(markers);
+const ringGeo=new THREE.RingGeometry(0.32,0.42,48);ringGeo.rotateX(-Math.PI/2);
+const discGeo=new THREE.CircleGeometry(0.32,48);discGeo.rotateX(-Math.PI/2);
+function labelSprite(text){const c=document.createElement('canvas');c.width=512;c.height=96;const g=c.getContext('2d');
+  g.fillStyle='rgba(17,21,15,.72)';g.beginPath();g.roundRect(4,8,504,80,40);g.fill();g.fillStyle='#efe7da';g.font='500 40px "Instrument Sans",system-ui,sans-serif';g.textAlign='center';g.textBaseline='middle';g.fillText(text,256,50);
+  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;const s=new THREE.Sprite(new THREE.SpriteMaterial({map:t,transparent:true,depthTest:false}));s.scale.set(1.2,0.225,1);s.renderOrder=3;return s;}
+function buildMarkers(s){
+  markers.clear();
+  s.links.forEach(id=>{const t=byId[id];if(!t)return;const b=bearing(s,t);
+    const g=new THREE.Group();g.position.copy(dir(b,3.2));g.position.y=0.02;g.userData.target=id;
+    const ring=new THREE.Mesh(ringGeo,new THREE.MeshBasicMaterial({color:0xefe7da,transparent:true,opacity:.95,depthTest:false}));ring.renderOrder=2;
+    const disc=new THREE.Mesh(discGeo,new THREE.MeshBasicMaterial({color:0xe2731f,transparent:true,opacity:.35,depthTest:false}));disc.renderOrder=1;disc.userData.hit=true;
+    const lab=labelSprite(t.name);lab.position.y=0.55;
+    g.add(ring,disc,lab);g.userData.ring=ring;g.userData.disc=disc;markers.add(g);});
+}
+
+// ---------- spot state + walking transition ----------
+let current=null,busy=false;
+const routeIdx=()=>P.route.indexOf(current?.id);
+async function go(id,{instant=false}={}){
+  if(busy||(current&&current.id===id))return;busy=true;
+  const s=byId[id];const t=await tex(id).catch(()=>null);
+  if(!t){showMsg('That view could not load. Check the Wi-Fi and try again.',3000);busy=false;return;}
+  const prev=current;
+  backS.material.map=t;backS.material.needsUpdate=true;backS.rotation.y=-Math.PI/2+rad(s.heading||0);
+  const walkDir=prev?dir(bearing(prev,s)):new THREE.Vector3();
+  markers.visible=false;
+  const T=instant?1:900;const t0=performance.now();
+  await new Promise(done=>{function step(now){const k=Math.min(1,(now-t0)/T),e=k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2;
+      // walking feel: the old view slides past you while the new one comes up around you
+      front.position.copy(walkDir).multiplyScalar(-e*6);backS.position.copy(walkDir).multiplyScalar((1-e)*6);
+      front.material.opacity=1-e;backS.material.opacity=e;
+      if(k<1)requestAnimationFrame(step);else done();}
+    requestAnimationFrame(step);});
+  front.material.opacity=0;front.position.set(0,0,0);backS.position.set(0,0,0);
+  [front,backS]=[backS,front];
+  current=s;buildMarkers(s);markers.visible=true;$('spot').textContent=s.name;drawMap();busy=false;
+  // preload neighbours
+  s.links.forEach(l=>tex(l).catch(()=>{}));const n=P.route[routeIdx()+1];if(n)tex(n).catch(()=>{});
+}
+function step(d){const i=routeIdx();const n=P.route[(i+d+P.route.length)%P.route.length];go(n);}
+$('next').onclick=()=>{stopAuto();step(1)};$('prev').onclick=()=>{stopAuto();step(-1)};
+$('back').onclick=()=>location.href='index.html';
+
+// guided walk: moves along the route on its own, slowly turning to face where it goes next (turning only outside the headset)
+let autoT=null;
+function stopAuto(){clearInterval(autoT);autoT=null;$('auto').setAttribute('aria-pressed','false');}
+$('auto').onclick=()=>{if(autoT){stopAuto();return;}$('auto').setAttribute('aria-pressed','true');autoT=setInterval(()=>{if(!busy)step(1)},9000);};
+
+// ---------- looking (2D) ----------
+let yaw=0,pitch=0,drag=null,moved=0;
+function applyLook(){if(!renderer.xr.isPresenting){rig.rotation.y=-yaw;cam.rotation.set(pitch,0,0,'YXZ');}}
+const el=renderer.domElement;
+el.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY};moved=0;el.setPointerCapture(e.pointerId);});
+el.addEventListener('pointermove',e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;moved+=Math.abs(dx)+Math.abs(dy);yaw-=dx*0.0035;pitch=Math.max(-1.35,Math.min(1.35,pitch+dy*0.0035));drag={x:e.clientX,y:e.clientY};applyLook();});
+el.addEventListener('pointerup',e=>{if(drag&&moved<8)pick2D(e);drag=null;});
+el.addEventListener('wheel',e=>{cam.fov=Math.max(35,Math.min(90,cam.fov+e.deltaY*0.04));cam.updateProjectionMatrix();},{passive:true});
+const ray=new THREE.Raycaster(),ndc=new THREE.Vector2();
+function hitMarker(){const hits=ray.intersectObjects(markers.children,true);for(const h of hits){let o=h.object;while(o&&!o.userData.target)o=o.parent;if(o)return o;}return null;}
+function pick2D(e){ndc.set(e.clientX/innerWidth*2-1,-(e.clientY/innerHeight)*2+1);ray.setFromCamera(ndc,cam);const m=hitMarker();if(m){stopAuto();go(m.userData.target);}}
+
+// ---------- VR ----------
+let session=null;
+if(navigator.xr?.isSessionSupported)navigator.xr.isSessionSupported('immersive-vr').then(ok=>{$('vr').hidden=!ok;}).catch(()=>{});
+$('vr').onclick=async()=>{
+  if(session){session.end();return;}
+  try{session=await navigator.xr.requestSession('immersive-vr',{optionalFeatures:['local-floor']});
+    renderer.xr.setReferenceSpaceType('local-floor');await renderer.xr.setSession(session);
+    cam.position.set(0,0,0);cam.rotation.set(0,0,0);rig.rotation.y=-yaw;$('vr').textContent='Exit VR';
+    session.addEventListener('end',()=>{session=null;$('vr').textContent='Enter VR';cam.position.set(0,1.6,0);applyLook();});
+  }catch(err){showMsg('VR could not start on this device. You can still look around and walk on screen.',4000);}
+};
+const factory=new XRControllerModelFactory();const ctrls=[];
+for(let i=0;i<2;i++){
+  const c=renderer.xr.getController(i);rig.add(c);
+  const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3(0,0,-1)]),new THREE.LineBasicMaterial({color:0xe2731f}));line.scale.z=8;c.add(line);
+  c.addEventListener('selectstart',()=>{const m=aimAt(c);if(m){stopAuto();go(m.userData.target);}else if(!busy){step(1);}});
+  c.addEventListener('connected',e=>{c.userData.src=e.data;});
+  const grip=renderer.xr.getControllerGrip(i);grip.add(factory.createControllerModel(grip));rig.add(grip);
+  ctrls.push(c);
+}
+const tmpM=new THREE.Matrix4();
+function aimAt(c){tmpM.identity().extractRotation(c.matrixWorld);ray.ray.origin.setFromMatrixPosition(c.matrixWorld);ray.ray.direction.set(0,0,-1).applyMatrix4(tmpM);return hitMarker();}
+// thumbstick: push forward = walk to the spot you are facing; left/right = snap turn
+let stickReady=true;
+function sticks(){
+  if(!session)return;
+  for(const src of session.inputSources){const a=src.gamepad?.axes;if(!a)continue;const x=a[2]??0,y=a[3]??0;
+    if(Math.abs(x)<.3&&Math.abs(y)<.3){stickReady=true;continue;}
+    if(!stickReady)continue;stickReady=false;
+    if(Math.abs(x)>.7){yaw+=x>0?rad(30):-rad(30);rig.rotation.y=-yaw;}
+    else if(y<-.7)walkFacing();else if(y>.7&&!busy)step(-1);}
+}
+const fwd=new THREE.Vector3();
+function walkFacing(){if(!current||busy)return;renderer.xr.getCamera().getWorldDirection(fwd);const b=Math.atan2(fwd.x,-fwd.z);
+  let best=null,bd=1e9;current.links.forEach(id=>{const d=Math.abs(Math.atan2(Math.sin(bearing(current,byId[id])-b),Math.cos(bearing(current,byId[id])-b)));if(d<bd){bd=d;best=id;}});
+  if(best&&bd<rad(70))go(best);}
+
+// ---------- site plan ----------
+const mc=$('mapc'),mg=mc.getContext('2d');const plan=new Image();plan.src=`pano/${key}/siteplan.jpg`;plan.onload=()=>{mc.width=plan.width;mc.height=plan.height;drawMap();};
+function drawMap(){if(!plan.complete||!current)return;mg.drawImage(plan,0,0);
+  P.spots.forEach(s=>{mg.beginPath();mg.arc(s.x,s.y,s===current?0:7,0,7);mg.fillStyle='rgba(95,179,169,.9)';mg.fill();});
+  const lookB=yaw;mg.save();mg.translate(current.x,current.y);mg.rotate(lookB);mg.beginPath();mg.moveTo(0,0);mg.arc(0,0,60,-Math.PI/2-0.5,-Math.PI/2+0.5);mg.closePath();mg.fillStyle='rgba(226,115,31,.35)';mg.fill();mg.restore();
+  mg.beginPath();mg.arc(current.x,current.y,11,0,7);mg.fillStyle='#e2731f';mg.fill();mg.lineWidth=3;mg.strokeStyle='#fff';mg.stroke();}
+mc.addEventListener('click',e=>{const r=mc.getBoundingClientRect();const x=(e.clientX-r.left)/r.width*mc.width,y=(e.clientY-r.top)/r.height*mc.height;let best=null,bd=40;P.spots.forEach(s=>{const d=Math.hypot(s.x-x,s.y-y);if(d<bd){bd=d;best=s;}});if(best){stopAuto();go(best.id);}});
+
+function showMsg(t,ms){const m=$('msg');m.textContent=t;m.hidden=false;setTimeout(()=>m.hidden=true,ms);}
+
+// ---------- loop ----------
+const clock=new THREE.Clock();let mapTick=0;
+renderer.setAnimationLoop(()=>{
+  const dt=clock.getDelta();sticks();
+  sphA.position.y=sphB.position.y=0;
+  // spheres and rings stay centred on the viewer
+  const p=rig.position;markers.position.copy(p);
+  // hover highlight
+  let hov=null;if(session){for(const c of ctrls){const m=aimAt(c);if(m)hov=m;}}
+  markers.children.forEach(g=>{const on=g===hov;g.userData.disc.material.opacity=on?.85:.35;g.scale.setScalar(on?1.15:1);});
+  if(autoT&&!session&&!drag&&current){ // gentle turn toward the next spot during the guided walk
+    const n=byId[P.route[routeIdx()+1]];if(n){const tb=bearing(current,n);const d=Math.atan2(Math.sin(tb-yaw),Math.cos(tb-yaw));yaw+=d*Math.min(1,dt*0.6);applyLook();}}
+  if(++mapTick%10===0)drawMap();
+  renderer.render(scene,cam);
+});
+
+window.__tour={look:(y,p=0)=>{yaw=y;pitch=p;applyLook();},ready:()=>!!current&&!busy};
+const startId=(location.hash.slice(1)&&byId[location.hash.slice(1)])?location.hash.slice(1):P.start;
+yaw=0;applyLook();
+go(startId,{instant:true}).then(()=>{const n=byId[P.route[1]];if(n){yaw=bearing(byId[startId],n);applyLook();}});
+</script>
+</body>
+</html>
