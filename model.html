@@ -55,7 +55,7 @@ button:disabled{opacity:.45;cursor:default}
   <div class="card seg"><button id="vr" class="primary" hidden>Enter VR</button><button id="mode" aria-pressed="false">Overview</button></div>
 </div>
 
-<div id="status"><div class="card"><h2 id="st-h">Loading Dolores</h2><p id="st-p">About 6 MB. Keep the headset on Wi-Fi.</p><div class="bar"><i id="st-bar"></i></div></div></div>
+<div id="status"><div class="card"><h2 id="st-h">Loading Dolores</h2><p id="st-p">About 1.5 MB. Keep the headset on Wi-Fi.</p><div class="bar"><i id="st-bar"></i></div></div></div>
 
 <div id="pad" aria-label="Walk pad"><i></i></div>
 <div class="hint"><div class="card">Drag anywhere to look · pad to walk<br>Keys: W A S D · Q/E turn<br>Headset: left stick walk · right stick turn</div></div>
@@ -65,9 +65,10 @@ button:disabled{opacity:.45;cursor:default}
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+import {MeshoptDecoder} from 'three/addons/libs/meshopt_decoder.module.js';
 
 const PROJECTS={
-  dolores:{name:'Dolores',file:'dolores.glb',size:'About 6 MB',source:'Revit model',
+  dolores:{name:'Dolores',file:'dolores.glb',size:'About 1.5 MB',source:'Revit model',
     views:[{n:'Street',p:[9.8,31],y:14},{n:'Front house',p:[8.4,14.3],y:194,in:1},{n:'Driveway',p:[6.9,2],y:30},{n:'Middle house',p:[0,-1],y:194,in:1},{n:'Rear ADU',p:[-5,-8],y:20}]},
   mariposa:{name:'Mariposa',file:'mariposa.txt',size:'',source:'Revit export pending',views:[]}
 };
@@ -98,7 +99,7 @@ addEventListener('resize',size);size();
 matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',()=>scene.background.set(css('--sky')));
 
 // ---------- model loading ----------
-const loader=new GLTFLoader();
+const loader=new GLTFLoader();loader.setMeshoptDecoder(MeshoptDecoder);
 let model=null, colliders=[], current=null;
 const ray=new THREE.Raycaster();ray.far=60;
 function groundAt(x,z,fromY){
