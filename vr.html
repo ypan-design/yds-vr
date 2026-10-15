@@ -9,10 +9,11 @@
 <style>
 #hud{position:fixed;z-index:10;left:12px;top:12px;background:rgba(17,21,15,.75);color:#efe7da;font:500 15px system-ui,sans-serif;padding:10px 14px;border-radius:12px;max-width:70vw}
 #hud a{color:#e2731f}
+#chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}#chips button{font:500 14px system-ui,sans-serif;color:#efe7da;background:rgba(255,255,255,.08);border:1px solid rgba(239,231,218,.25);border-radius:9px;padding:8px 10px;cursor:pointer}#chips button.on{background:#e2731f;border-color:#e2731f}
 </style>
 </head>
 <body>
-<div id="hud"><b id="pname"></b> · <span id="sname"></span><br><small>Press the VR goggles button (bottom right). Point at an orange circle and pull the trigger to walk. <a href="index.html">All projects</a></small></div>
+<div id="hud"><b id="pname"></b> · <span id="sname"></span><br><small>Press the VR goggles button (bottom right). Point at an orange circle and pull the trigger to walk, or press <b>A</b> for the next room. <a href="index.html">All projects</a></small><div id="chips"></div></div>
 <a-scene renderer="antialias:true;colorManagement:true" vr-mode-ui="enabled:true" loading-screen="dotsColor:#e2731f;backgroundColor:#11150f">
   <a-assets timeout="20000" id="assets"></a-assets>
   <a-sky id="sky" radius="40" rotation="0 -90 0"></a-sky>
@@ -36,6 +37,7 @@ let current=null;
 function go(id){
   const s=byId[id];if(!s)return;current=s;
   document.getElementById('sname').textContent=s.name;
+  document.querySelectorAll('#chips button').forEach(b=>b.classList.toggle('on',b.dataset.id===id));
   sky.setAttribute('src','pano/'+key+'/'+id+'.jpg');
   sky.setAttribute('rotation','0 '+(-90+(s.heading||0))+' 0');
   while(spots.firstChild)spots.removeChild(spots.firstChild);
@@ -53,7 +55,12 @@ function go(id){
 }
 // keep labels facing the viewer without extra libraries
 AFRAME.registerComponent('look-at',{tick(){const c=this.el.sceneEl.camera;if(!c)return;const p=new THREE.Vector3();c.getWorldPosition(p);this.el.object3D.lookAt(p);}});
-document.querySelector('a-scene').addEventListener('loaded',()=>go(P.start));
+const chips=document.getElementById('chips');
+P.route.forEach(id=>{const b=document.createElement('button');b.textContent=byId[id].name;b.dataset.id=id;b.onclick=()=>go(id);chips.appendChild(b);});
+function nextSpot(d){const i=P.route.indexOf(current?current.id:P.start);go(P.route[(i+d+P.route.length)%P.route.length]);}
+document.querySelectorAll('[laser-controls]').forEach(c=>{c.addEventListener('abuttondown',()=>nextSpot(1));c.addEventListener('xbuttondown',()=>nextSpot(1));c.addEventListener('bbuttondown',()=>nextSpot(-1));c.addEventListener('ybuttondown',()=>nextSpot(-1));});
+const startId=new URLSearchParams(location.search).get('s');
+document.querySelector('a-scene').addEventListener('loaded',()=>go(byId[startId]?startId:P.start));
 </script>
 </body>
 </html>
